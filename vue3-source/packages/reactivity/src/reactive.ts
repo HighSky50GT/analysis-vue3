@@ -14,13 +14,14 @@ import {
 import type { UnwrapRefSimple, Ref, RawSymbol } from './ref'
 
 export const enum ReactiveFlags {
-  SKIP = '__v_skip',
-  IS_REACTIVE = '__v_isReactive',
-  IS_READONLY = '__v_isReadonly',
-  IS_SHALLOW = '__v_isShallow',
-  RAW = '__v_raw'
+  SKIP = '__v_skip',// //无需响应的对象
+  IS_REACTIVE = '__v_isReactive',//响应式对象
+  IS_READONLY = '__v_isReadonly', //只读数据
+  IS_SHALLOW = '__v_isShallow',//浅层响应式？
+  RAW = '__v_raw' //取原始对象
 }
 
+// 为原始对象添加一些属性，这里只是定义好属性
 export interface Target {
   [ReactiveFlags.SKIP]?: boolean
   [ReactiveFlags.IS_REACTIVE]?: boolean
@@ -36,8 +37,8 @@ export const shallowReadonlyMap = new WeakMap<Target, any>()
 
 const enum TargetType {
   INVALID = 0,
-  COMMON = 1,
-  COLLECTION = 2
+  COMMON = 1,//对象和array类型
+  COLLECTION = 2//map、set以及对应的弱引用版本类型
 }
 
 function targetTypeMap(rawType: string) {
@@ -56,12 +57,13 @@ function targetTypeMap(rawType: string) {
 }
 
 function getTargetType(value: Target) {
-  return value[ReactiveFlags.SKIP] || !Object.isExtensible(value)
-    ? TargetType.INVALID
-    : targetTypeMap(toRawType(value))
+  return value[ReactiveFlags.SKIP] || !Object.isExtensible(value)//是否有无需响应的字段标识，或者一个对象是否是不可扩展的
+    ? TargetType.INVALID //返回无效的标识
+    : targetTypeMap(toRawType(value))//否则根据对象类型返回相应的标识
 }
 
 // only unwrap nested ref
+// 仅展开嵌套ref
 export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
 
 /**
@@ -75,6 +77,9 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
  * A reactive object also automatically unwraps refs contained in it, so you
  * don't need to use `.value` when accessing and mutating their value:
  *
+ * 创建原始对象的反应性副本。
+ * 响应转换是 “深度”-它影响所有嵌套属性。在 基于ES2015代理的实现，返回的代理为 not 等于 原始对象。建议仅与反应性 代理，避免依赖原始对象。
+ * 响应对象也会自动解包其中包含的refs，因此您 不需要使用.value当访问和改变它们的值时:
  * ```js
  * const count = ref(0)
  * const obj = reactive({
@@ -89,6 +94,7 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
 export function reactive<T extends object>(target: T): UnwrapNestedRefs<T>
 export function reactive(target: object) {
   // if trying to observe a readonly proxy, return the readonly version.
+  // 如果尝试观察只读代理，则返回只读版本。
   if (isReadonly(target)) {
     return target
   }
@@ -109,6 +115,7 @@ export type ShallowReactive<T> = T & { [ShallowReactiveMarker]?: true }
  * Return a shallowly-reactive copy of the original object, where only the root
  * level properties are reactive. It also does not auto-unwrap refs (even at the
  * root level).
+ * 返回原始对象的浅响应副本，其中只有根级别属性是反应性的。它也不会自动解包参考文献 (即使在 根级别)。
  */
 export function shallowReactive<T extends object>(
   target: T
@@ -121,8 +128,9 @@ export function shallowReactive<T extends object>(
     shallowReactiveMap
   )
 }
-
+//原始数据类型
 type Primitive = string | number | boolean | bigint | symbol | undefined | null
+//原始数据类型+内置对象类型
 type Builtin = Primitive | Function | Date | Error | RegExp
 export type DeepReadonly<T> = T extends Builtin
   ? T
@@ -149,6 +157,7 @@ export type DeepReadonly<T> = T extends Builtin
 /**
  * Creates a readonly copy of the original object. Note the returned copy is not
  * made reactive, but `readonly` can be called on an already reactive object.
+ * 创建原始对象的只读副本。注意返回的副本不是做出反应性，但可以在已经反应性的对象上调用 “readonly”。
  */
 export function readonly<T extends object>(
   target: T
@@ -185,6 +194,8 @@ function createReactiveObject(
   collectionHandlers: ProxyHandler<any>,
   proxyMap: WeakMap<Target, any>
 ) {
+  //必须是对象类型才能使用reactive
+  //因为proxy只能处理对象类型，所以基本数据类型需要使用ref包裹起来
   if (!isObject(target)) {
     if (__DEV__) {
       console.warn(`value cannot be made reactive: ${String(target)}`)
@@ -200,13 +211,15 @@ function createReactiveObject(
     return target
   }
   // target already has corresponding Proxy
+  // target已经有对应的代理
   const existingProxy = proxyMap.get(target)
   if (existingProxy) {
     return existingProxy
   }
   // only specific value types can be observed.
+  // 只能观察到特定的值类型。
   const targetType = getTargetType(target)
-  if (targetType === TargetType.INVALID) {
+  if (targetType === TargetType.INVALID) { //无效时直接返回对象本身
     return target
   }
   const proxy = new Proxy(
