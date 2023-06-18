@@ -50,18 +50,21 @@ export let activeEffect: ReactiveEffect | undefined
 export const ITERATE_KEY = Symbol(__DEV__ ? 'iterate' : '')
 export const MAP_KEY_ITERATE_KEY = Symbol(__DEV__ ? 'Map key iterate' : '')
 
+//副作用函数需要的类
 export class ReactiveEffect<T = any> {
   active = true
-  deps: Dep[] = []
+  deps: Dep[] = []//是否是深度递归响应式
   parent: ReactiveEffect | undefined = undefined
 
   /**
    * Can be attached after creation
+   * 计算属性
    * @internal
    */
   computed?: ComputedRefImpl<T>
   /**
    * @internal
+   * 允许递归
    */
   allowRecurse?: boolean
   /**
@@ -167,6 +170,7 @@ export interface ReactiveEffectRunner<T = any> {
   effect: ReactiveEffect
 }
 
+//副作用函数
 export function effect<T = any>(
   fn: () => T,
   options?: ReactiveEffectOptions
@@ -210,6 +214,7 @@ export function resetTracking() {
   shouldTrack = last === undefined ? true : last
 }
 
+//收集响应的副作用函数
 export function track(target: object, type: TrackOpTypes, key: unknown) {
   if (shouldTrack && activeEffect) {
     let depsMap = targetMap.get(target)
@@ -260,6 +265,8 @@ export function trackEffects(
   }
 }
 
+
+//触发响应式
 export function trigger(
   target: object,
   type: TriggerOpTypes,
@@ -293,12 +300,13 @@ export function trigger(
     }
 
     // also run for iteration key on ADD | DELETE | Map.SET
+    // 运行迭代key时，对key使用了add、delete、map.set操作的
     switch (type) {
-      case TriggerOpTypes.ADD:
-        if (!isArray(target)) {
-          deps.push(depsMap.get(ITERATE_KEY))
-          if (isMap(target)) {
-            deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))
+      case TriggerOpTypes.ADD://添加属性
+        if (!isArray(target)) {//不是数组
+          deps.push(depsMap.get(ITERATE_KEY))//加入到集合中
+          if (isMap(target)) {//是map
+            deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))//加入到
           }
         } else if (isIntegerKey(key)) {
           // new index added to array -> length changes

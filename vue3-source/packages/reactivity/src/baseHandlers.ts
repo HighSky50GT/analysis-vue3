@@ -32,6 +32,9 @@ import {
 import { isRef } from './ref'
 import { warn } from './warning'
 
+
+//object和array类型的handler
+
 const isNonTrackableKeys = /*#__PURE__*/ makeMap(`__proto__,__v_isRef,__isVue`)
 
 const builtInSymbols = new Set(
@@ -84,18 +87,23 @@ function createArrayInstrumentations() {
   })
   return instrumentations
 }
-
+//返回Boolean值，表示obj的只有属性中是否有key
 function hasOwnProperty(this: object, key: string) {
-  const obj = toRaw(this)
+  const obj = toRaw(this)//转成原始对象
   track(obj, TrackOpTypes.HAS, key)
   return obj.hasOwnProperty(key)
 }
 
+/**
+ * 创建 用于拦截对象的读取属性操作
+ * isReadonly: 是否只读
+ * shallow: 是否浅层代理
+ **/
 function createGetter(isReadonly = false, shallow = false) {
-  return function get(target: Target, key: string | symbol, receiver: object) {
-    if (key === ReactiveFlags.IS_REACTIVE) {
+  return function get(target: Target, key: string | symbol, receiver: object) {//返回get函数
+    if (key === ReactiveFlags.IS_REACTIVE) {//属性名是 内置响应式 则返回 不止只读
       return !isReadonly
-    } else if (key === ReactiveFlags.IS_READONLY) {
+    } else if (key === ReactiveFlags.IS_READONLY) {//属性名是 内置只读 则返回 是否可读
       return isReadonly
     } else if (key === ReactiveFlags.IS_SHALLOW) {
       return shallow
@@ -157,7 +165,7 @@ function createGetter(isReadonly = false, shallow = false) {
 
 const set = /*#__PURE__*/ createSetter()
 const shallowSet = /*#__PURE__*/ createSetter(true)
-
+//创建 用于设置属性值操作的捕获器
 function createSetter(shallow = false) {
   return function set(
     target: object,
@@ -165,6 +173,7 @@ function createSetter(shallow = false) {
     value: unknown,
     receiver: object
   ): boolean {
+    //获取旧数据
     let oldValue = (target as any)[key]
     if (isReadonly(oldValue) && isRef(oldValue) && !isRef(value)) {
       return false
@@ -188,17 +197,20 @@ function createSetter(shallow = false) {
         : hasOwn(target, key)
     const result = Reflect.set(target, key, value, receiver)
     // don't trigger if target is something up in the prototype chain of original
+    //这个判断解决如下的问题
+    //当代理对象的原型是一个响应式对象，那么当set的值在代理对象的父类中时，就会调用两次set的响应，这会造成性能损耗
+    //原理在104-106页
     if (target === toRaw(receiver)) {
       if (!hadKey) {
         trigger(target, TriggerOpTypes.ADD, key, value)
-      } else if (hasChanged(value, oldValue)) {
+      } else if (hasChanged(value, oldValue)) {//对比值是否改变，改变时才需要取出响应式处理
         trigger(target, TriggerOpTypes.SET, key, value, oldValue)
       }
     }
     return result
   }
 }
-
+//用于拦截对对象属性的 delete 操作。
 function deleteProperty(target: object, key: string | symbol): boolean {
   const hadKey = hasOwn(target, key)
   const oldValue = (target as any)[key]
@@ -208,7 +220,7 @@ function deleteProperty(target: object, key: string | symbol): boolean {
   }
   return result
 }
-
+//针对 in 操作符的代理方法。
 function has(target: object, key: string | symbol): boolean {
   const result = Reflect.has(target, key)
   if (!isSymbol(key) || !builtInSymbols.has(key)) {
@@ -216,12 +228,13 @@ function has(target: object, key: string | symbol): boolean {
   }
   return result
 }
-
+//针对 迭代操作 的代理方法。如for...in
 function ownKeys(target: object): (string | symbol)[] {
   track(target, TrackOpTypes.ITERATE, isArray(target) ? 'length' : ITERATE_KEY)
-  return Reflect.ownKeys(target)
+  return Reflect.ownKeys(target)//返回一个由目标对象自身的属性键组成的数组
 }
 
+//无特殊的响应式handler函数
 export const mutableHandlers: ProxyHandler<object> = {
   get,
   set,
@@ -230,6 +243,7 @@ export const mutableHandlers: ProxyHandler<object> = {
   ownKeys
 }
 
+//只读的handler函数
 export const readonlyHandlers: ProxyHandler<object> = {
   get: readonlyGet,
   set(target, key) {
@@ -252,6 +266,8 @@ export const readonlyHandlers: ProxyHandler<object> = {
   }
 }
 
+//浅层响应的handler函数
+//继承自 mutableHandlers ，重写了get和set方法
 export const shallowReactiveHandlers = /*#__PURE__*/ extend(
   {},
   mutableHandlers,
@@ -264,6 +280,8 @@ export const shallowReactiveHandlers = /*#__PURE__*/ extend(
 // Props handlers are special in the sense that it should not unwrap top-level
 // refs (in order to allow refs to be explicitly passed down), but should
 // retain the reactivity of the normal readonly object.
+//只读的浅层响应式handler函数
+//继承自 readonlyHandlers ，重写了get方法
 export const shallowReadonlyHandlers = /*#__PURE__*/ extend(
   {},
   readonlyHandlers,
